@@ -54,9 +54,9 @@ class matenv:
 ##     newObservation, reward, done, info = env.step(action)  
     def __init__(self,filename):
         
-        self.transmat = txt2mat(filename+'trans.csv')
-        self.rewardmat = txt2mat(filename+'reward.csv')
-        self.stats = stat2num(filename + 'stat.csv')
+        self.transmat = txt2mat('./model/'+filename+'/'+filename+'trans.csv')
+        self.rewardmat = txt2mat('./model/'+filename+'/'+filename+'reward.csv')
+        self.stats = stat2num('./model/'+filename+'/'+filename + 'stat.csv')
         self.statnum = len(self.stats)
         
         

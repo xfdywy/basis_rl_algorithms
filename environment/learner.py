@@ -1,11 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Nov 03 21:53:43 2016
-
-@author: v-yuewng
-"""
-
-import env_keras as ek
 import random
 import numpy as np
 from keras.models import Sequential
@@ -14,57 +6,11 @@ from keras.layers.core import Dense, Dropout, Activation
 from keras.layers.normalization import BatchNormalization
 from keras.layers.advanced_activations import LeakyReLU
 from keras.regularizers import l2
-
+from environment.memory import Memory
 # import os
 # os.environ["THEANO_FLAGS"] = "mode=FAST_RUN,device=gpu,floatX=float32"
 # import theano
 
-class Memory:
-    """
-    This class provides an abstraction to store the [s, a, r, a'] elements of each iteration.
-    Instead of using tuples (as other implementations do), the information is stored in lists 
-    that get returned as another list of dictionaries with each key corresponding to either 
-    "state", "action", "reward", "nextState" or "isFinal".
-    """
-    def __init__(self, size):
-        self.size = size
-        self.currentPosition = 0
-        self.states = []
-        self.actions = []
-        self.rewards = []
-        self.newStates = []
-        self.finals = []
-
-    def getMiniBatch(self, size) :
-        indices = random.sample(np.arange(len(self.states)), min(size,len(self.states)) )
-        miniBatch = []
-        for index in indices:
-            miniBatch.append({'state': self.states[index],'action': self.actions[index], 'reward': self.rewards[index], 'newState': self.newStates[index], 'isFinal': self.finals[index]})
-        return miniBatch
-
-    def getCurrentSize(self) :
-        return len(self.states)
-
-    def getMemory(self, index): 
-        return {'state': self.states[index],'action': self.actions[index], 'reward': self.rewards[index], 'newState': self.newStates[index], 'isFinal': self.finals[index]}
-
-    def addMemory(self, state, action, reward, newState, isFinal) :
-        if (self.currentPosition >= self.size - 1) :
-            self.currentPosition = 0
-        if (len(self.states) > self.size) :
-            self.states[self.currentPosition] = state
-            self.actions[self.currentPosition] = action
-            self.rewards[self.currentPosition] = reward
-            self.newStates[self.currentPosition] = newState
-            self.finals[self.currentPosition] = isFinal
-        else :
-            self.states.append(state)
-            self.actions.append(action)
-            self.rewards.append(reward)
-            self.newStates.append(newState)
-            self.finals.append(isFinal)
-        
-        self.currentPosition += 1
 
 class DeepQ:
     """
@@ -95,10 +41,10 @@ class DeepQ:
         self.learningRate = learningRate
    
     def initNetworks(self, hiddenLayers):
-        model = self.createModel(self.input_size, self.output_size, hiddenLayers, "relu", self.learningRate)
+        model = self.createModel(self.input_size, self.output_size, hiddenLayers, "sigmoid", self.learningRate)
         self.model = model
 
-        targetModel = self.createModel(self.input_size, self.output_size, hiddenLayers, "relu", self.learningRate)
+        targetModel = self.createModel(self.input_size, self.output_size, hiddenLayers, "sigmoid", self.learningRate)
         self.targetModel = targetModel
 
     def createRegularizedModel(self, inputs, outputs, hiddenLayers, activationType, learningRate):
@@ -255,7 +201,7 @@ class DeepQ:
         if self.memory.getCurrentSize() >= 1:
             return self.memory.getMemory(self.memory.getCurrentSize() - 1)
 
-    def learnOnMiniBatch(self, miniBatchSize, useTargetNetwork=True):
+    def learnOnMiniBatch(self, miniBatchSize, useTargetNetwork=False):
         # Do not learn until we've got self.learnStart samples        
         if self.memory.getCurrentSize() > self.learnStart:
             # learn in batches of 128
@@ -283,93 +229,5 @@ class DeepQ:
                 if isFinal:
                     X_batch = np.append(X_batch, np.array([newState.copy()]), axis=0)
                     Y_batch = np.append(Y_batch, np.array([[reward]*self.output_size]), axis=0)
-            self.model.fit(X_batch, Y_batch, batch_size = len(miniBatch), nb_epoch=1, verbose = 0)
-
-env = ek.matenv('sutton')
-# env.monitor.start('/tmp/mountaincar-experiment-1', force=True)
-
-# Exploring the new environment observations and actions:
-#
-# >>> import gym
-# env = gym.make('MountainCar-v0')>>> env = gym.make('MountainCar-v0')
-# [2016-06-19 17:37:12,780] Making new env: MountainCar-v0
-# >>> print env.observation_space
-# Box(2,)
-# >>> print env.action_space
-# Discrete(3)
-
-
-epochs = 1000
-steps = 100000
-updateTargetNetwork = 10000
-explorationRate = 1
-minibatch_size = 128
-learnStart = 128
-learningRate = 0.00025
-discountFactor = 0.99
-memorySize = 1000000
-
-last100Scores = [0] * 100
-last100ScoresIndex = 0
-last100Filled = False
-
-deepQ = DeepQ(7, 2, memorySize, discountFactor, learningRate, learnStart)
-# deepQ.initNetworks([30,30,30])
-deepQ.initNetworks([30,30])
-# deepQ.initNetworks([300,300])
-
-stepCounter = 0
-
-# number of reruns
-for epoch in xrange(epochs):
-    observation = env.getstat()
-    print explorationRate
-    # number of timesteps
-    for t in xrange(steps):
-        env.setstat()
-        qValues = deepQ.getQValues(observation)
-
-        action = deepQ.selectAction(qValues, explorationRate)
-
-        newObservation, reward, done= env.step(action)
-
-        if (t >= 199):
-            print "Failed. Time out"
-            done = True
-            # reward = 200            
-
-        if done and t < 199:
-            print "Sucess!"
-            # reward -= 200
-        deepQ.addMemory(observation, action, reward, newObservation, done)
-
-        if stepCounter >= learnStart:
-            if stepCounter <= updateTargetNetwork:
-                deepQ.learnOnMiniBatch(minibatch_size, False)
-            else :
-                deepQ.learnOnMiniBatch(minibatch_size, True)
-
-        observation = newObservation
-
-        if done:
-            last100Scores[last100ScoresIndex] = t
-            last100ScoresIndex += 1
-            if last100ScoresIndex >= 100:
-                last100Filled = True
-                last100ScoresIndex = 0
-            if not last100Filled:
-                print "Episode ",epoch," finished after {} timesteps".format(t+1)
-            else :
-                print "Episode ",epoch," finished after {} timesteps".format(t+1)," last 100 average: ",(sum(last100Scores)/len(last100Scores))
-            break
-
-        stepCounter += 1
-        if stepCounter % updateTargetNetwork == 0:
-            deepQ.updateTargetNetwork()
-            print "updating target network"
-
-    explorationRate *= 0.995
-    # explorationRate -= (2.0/epochs)
-    explorationRate = max (0.05, explorationRate)
-
-# env.monitor.close()
+            history_callback = self.model.fit(X_batch, Y_batch, batch_size = len(miniBatch), nb_epoch=1, verbose = 0)
+            self.losshistory = history_callback.history['loss']

@@ -2,7 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import random
-
+from environment.memory import Memory
 def txt2mat(filename):
     f = open(filename)
     filetxt = f.readlines()
@@ -15,35 +15,39 @@ def txt2mat(filename):
             transmat = np.zeros((xdim,ydim))            
             y=0
         else:
-            transpro = ii.split(',')
+            transpro = ii.split(',')[:xdim]
             transmat[y,:]=np.array(transpro,dtype='float')
             y+=1
     return transmat
 
     
-def stat2num(filename):
+def state2num(filename):
     f = open(filename)
     filetxt = f.readlines()
     res = dict()
+    isfinal = dict()
     nn=0
     for ii in filetxt:
         if ii[0]=='#':
-            dimstat = ii.split(',')
-            statdim = int(dimstat[1])
-            featuredim = int(dimstat[2])
+            dimstate = ii.split(',')
+            statedim = int(dimstate[1])
+            featuredim = int(dimstate[2])
         else:
-            
-            res[nn]=np.array(ii.split(','),dtype='float')
+            if ii.split(',')[0] == 'T' :
+                isfinal[nn] = True
+            else:
+                isfinal[nn] = False
+            res[nn]=np.array(ii.split(',')[1:featuredim+1],dtype='float')
             nn+=1
-    return res
+    return res,isfinal,featuredim
             
     
-def simulation(transmat,currstat):
+def simulation(transmat,currstate):
     thisrand = random.random()
-    statnum = transmat.shape[0]
+    statenum = transmat.shape[0]
     prob = 0
-    for jj in range(statnum):
-        prob += transmat[currstat,jj]
+    for jj in range(statenum):
+        prob += transmat[currstate,jj]
         if thisrand < prob:
             return jj
         
@@ -54,33 +58,37 @@ class matenv:
 ##     newObservation, reward, done, info = env.step(action)  
     def __init__(self,filename):
         
-        self.transmat = txt2mat(filename+'trans.csv')
-        self.rewardmat = txt2mat(filename+'reward.csv')
-        self.stats = stat2num(filename + 'stat.csv')
-        self.statnum = len(self.stats)
-        self.isfinal = False
-        self.currentstat  =random.randint(1,self.statnum-2)
+        ##self.transmat = txt2mat('./model/'+filename+'/'+filename+'trans.csv')
+        self.rewardmat = txt2mat('./model/'+filename+'/'+filename+'reward.csv')
+        self.states,self.isfinals,self.featurenum = state2num('./model/'+filename+'/'+filename + 'state.csv')
+        self.statenum = len(self.states)
         
-    def setstat(self,stat= None):
-        if stat ==None:
-            self.currentstat  =random.randint(1,self.statnum-2)
+        self.currentstate  =random.randint(1,self.statenum-1)
+        self.isfinal = self.isfinals[self.currentstate]
+        
+    def setstate(self,state= None):
+        if state ==None:
+            self.currentstate  =random.randint(0,self.statenum-1)
         else:
-            self.currentstat = stat
+            self.currentstate = state
+        self.isfinal = self.isfinals[self.currentstate]
 
-    def getstat(self):
-        return self.stats[self.currentstat]
+    def getstate(self):
+        return self.states[self.currentstate]
             
-    def step(self,action):
+    def step(self,action,lors=1):
         
         
         
-        newstat = self.currentstat+2*action-1
-        reward = self.rewardmat[self.currentstat,self.currentstat+2*action-1]
+        newstate = self.currentstate +2*action-1
+        reward = self.rewardmat[self.currentstate,newstate]
+        self.currentstate = newstate        
+        self.isfinal = self.isfinals[self.currentstate]
         
-        if newstat==0 or newstat == self.statnum:
-            self.isfinal = True
-        
-        return self.stats[newstat],reward,self.isfinal
+        if lors == 1:
+            return self.states[newstate],reward,self.isfinal
+        else:
+            return newstate,reward,self.isfinal
  
         
 
